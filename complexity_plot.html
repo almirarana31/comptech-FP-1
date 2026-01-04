@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>ct.py Complexity Plot</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>body{font-family:Arial,Helvetica,sans-serif;padding:20px}</style>
+</head>
+<body>
+  <h2>ct.py Component Timings</h2>
+  <canvas id="chart" width="1000" height="500"></canvas>
+  <script>
+    const data = {"tokenize": {"sizes": [100, 200, 400, 800, 1600, 3200, 6400], "times": [0.0009649000130593777, 0.0017450000159442425, 0.005763599649071693, 0.01691529992967844, 0.02434290014207363, 0.029519999865442514, 0.11644729971885681], "mems": [1.98046875, 1.93359375, 2.01953125, 1.97265625, 1.92578125, 1.90234375, 1.90234375]}, "validate": {"sizes": [100, 200, 400, 800, 1600, 3200, 6400], "times": [0.0007423995994031429, 0.0016157999634742737, 0.005177599843591452, 0.007444099988788366, 0.0157174002379179, 0.035065699834376574, 0.06217270018532872], "mems": [2.38671875, 2.29296875, 2.33984375, 2.24609375, 2.15234375, 2.08203125, 2.08203125]}, "parse": {"sizes": [100, 200, 400, 800, 1600, 3200, 6400], "times": [0.0041068000718951225, 0.009410900063812733, 0.025363499764353037, 0.04204129986464977, 0.08975330041721463, 0.20451119961217046, 0.3870254997164011], "mems": [38.494140625, 77.8505859375, 156.5791015625, 313.9501953125, 633.96484375, 1269.9140625, 2547.53515625]}, "translate": {"sizes": [100, 200, 400, 800, 1600, 3200, 6400], "times": [0.00992615008726716, 0.014069050317630172, 0.03285374981351197, 0.08009960013441741, 0.15720014995895326, 0.3402358000166714, 0.5366402000654489], "mems": [72.087890625, 116.703125, 202.8828125, 385.94921875, 769.388671875, 1545.1953125, 3076.095703125]}};
+    const ctx = document.getElementById("chart").getContext("2d");
+    const datasets = Object.keys(data).map((k, i) => ({
+      label: k,
+      data: data[k].sizes.map((s, idx) => ({x: s, y: data[k].times[idx]})),
+      borderWidth: 2,
+      fill: false,
+      pointRadius: 4
+    }));
+    new Chart(ctx, {
+      type: "line",
+      data: { datasets },
+      options: {
+        scales: {
+          x: { type: 'logarithmic', title: { display: true, text: 'input size (chars)' } },
+          y: { type: 'logarithmic', title: { display: true, text: 'median time (s)' } }
+        },
+        plugins: { legend: { position: "bottom" } }
+      }
+    });
+  </script>
+</body>
+</html>
