@@ -324,9 +324,21 @@ class ASTNodeType(Enum):
     PROGRAM = "PROGRAM"
     SENTENCE = "SENTENCE"
     WORD = "WORD"
-    SYLLABLE = "SYLLABLE"
-    PUNCTUATION = "PUNCTUATION"
     SPACE = "SPACE"
+    PUNCTUATION = "PUNCTUATION"
+
+    # Grammar-aligned (AKSARA_GROUP)
+    AKSARA_GROUP = "AKSARA_GROUP"
+    VOWEL_GROUP = "VOWEL_GROUP"
+    VOWEL = "VOWEL"
+    CONSONANT_GROUP = "CONSONANT_GROUP"
+
+    # Grammar-aligned internals (CONSONANT_GROUP pieces)
+    BASE_CONSONANT = "BASE_CONSONANT"
+    CLUSTER = "CLUSTER"          # pangkon + consonant (your PASANGAN token)
+    VOWEL_MARK = "VOWEL_MARK"    # vocal diacritic
+    FINAL_MARK = "FINAL_MARK"    # consonant diacritic
+    DEAD_MARK = "DEAD_MARK"      # pangkon at end
 
 @dataclass
 class ASTNode:
@@ -379,65 +391,89 @@ class Parser:
         )
         self.advance()
         return False
+    
+    def is_aksara_group_start(self, tok: Token) -> bool:
+        return tok.type in (TokenType.CONSONANT, TokenType.VOWEL)
 
+    
     def parse_consonant_group(self) -> ASTNode:
         """
-        Grammar:
-          CONSONANT_GROUP ->
-              CONSONANT
-              CLUSTER*
-              VOWEL_MARK?
-              FINAL_MARK*
-              DEAD_MARK?
-
-          CLUSTER      -> PANGKON CONSONANT
-          VOWEL_MARK   -> VOCAL_DIACRITIC
-          FINAL_MARK   -> CONSONANT_DIACRITIC
-          DEAD_MARK    -> PANGKON
-
-        Implementation detail:
-          - CLUSTER is lexed as PASANGAN (single token = '꧀' + consonant),
-            so CLUSTER* is implemented as: while PASANGAN: eat(PASANGAN)
+        Grammar-aligned AST for:
+        CONSONANT_GROUP ->
+            CONSONANT
+            CLUSTER*
+            VOWEL_MARK?
+            FINAL_MARK*
+            DEAD_MARK?
         """
-        # CONSONANT
-        base = self.current_token.latin
+        node = ASTNode(ASTNodeType.CONSONANT_GROUP, "")
+
+        # 1) CONSONANT (base)
+        base_tok = self.current_token
+        base_latin = base_tok.latin
         self.eat(TokenType.CONSONANT)
+        node.children.append(ASTNode(ASTNodeType.BASE_CONSONANT, base_latin))
 
-        # CLUSTER*  (implemented as PASANGAN*)
-        clusters = []
+        # 2) CLUSTER*  (your lexer encodes CLUSTER as PASANGAN token)
         while self.current_token.type == TokenType.PASANGAN:
-            # PASANGAN already encodes pangkon+consonant
-            clusters.append(self.current_token.latin)
+            cl_tok = self.current_token
+            cl_latin = cl_tok.latin  # latin for the consonant in pasangan
             self.eat(TokenType.PASANGAN)
+            node.children.append(ASTNode(ASTNodeType.CLUSTER, cl_latin))
 
-        # VOWEL_MARK?  (VOCAL_DIACRITIC optional; otherwise inherent 'a')
-        vowel = "a"   # inherent vowel unless changed
+        # 3) VOWEL_MARK? (optional)
         if self.current_token.type == TokenType.VOCAL_DIACRITIC:
-            vowel = self.current_token.latin
+            v_tok = self.current_token
+            v_latin = v_tok.latin
             self.eat(TokenType.VOCAL_DIACRITIC)
+            node.children.append(ASTNode(ASTNodeType.VOWEL_MARK, v_latin))
 
-        # FINAL_MARK*  (zero or more CONSONANT_DIACRITIC)
-        finals = ""
+        # 4) FINAL_MARK* (0+)
         while self.current_token.type == TokenType.CONSONANT_DIACRITIC:
-            finals += self.current_token.latin
+            f_tok = self.current_token
+            f_latin = f_tok.latin
             self.eat(TokenType.CONSONANT_DIACRITIC)
+            node.children.append(ASTNode(ASTNodeType.FINAL_MARK, f_latin))
 
-        # DEAD_MARK?  (optional ending PANGKON)
-        dead = False
+        # 5) DEAD_MARK? (optional)
         if self.current_token.type == TokenType.PANGKON:
-            # end pangkon kills vowel
-            dead = True
             self.eat(TokenType.PANGKON)
+            node.children.append(ASTNode(ASTNodeType.DEAD_MARK, "DEAD"))
 
-        # Build romanization
-        core = base + "".join(clusters)
-        if dead:
-            out = core + finals
-        else:
-            out = core + vowel + finals
+        node.value = self.linearize(node)
+        return node
 
-        # Make AST richer (optional, but recommended)
-        node = ASTNode(ASTNodeType.SYLLABLE, out)
+    def parse_aksara_group(self) -> Optional[ASTNode]:
+        """
+        Grammar:
+        AKSARA_GROUP -> CONSONANT_GROUP | VOWEL_GROUP
+        """
+        if self.current_token.type == TokenType.CONSONANT:
+            group = self.parse_consonant_group()
+            wrapper = ASTNode(ASTNodeType.AKSARA_GROUP, "", [group])
+            wrapper.value = self.linearize(wrapper)
+            return wrapper
+
+        if self.current_token.type == TokenType.VOWEL:
+            group = self.parse_vowel_group()
+            wrapper = ASTNode(ASTNodeType.AKSARA_GROUP, "", [group])
+            wrapper.value = self.linearize(wrapper)
+            return wrapper
+
+        # Shouldn't happen if caller checks start tokens, but keep safe
+        self.error("SYN011", "Invalid start of AKSARA_GROUP", self.current_token)
+        return None
+    
+    def parse_vowel_group(self) -> ASTNode:
+        """
+        Grammar:
+        VOWEL_GROUP -> VOWEL
+        """
+        vowel_tok = self.current_token
+        self.eat(TokenType.VOWEL)
+        node = ASTNode(ASTNodeType.VOWEL_GROUP, "")
+        node.children.append(ASTNode(ASTNodeType.VOWEL, vowel_tok.latin))  # simple child
+        node.value = vowel_tok.latin
         return node
 
     def parse_vowel_syllable(self) -> str:
@@ -466,26 +502,19 @@ class Parser:
             return ASTNode(ASTNodeType.SYLLABLE, syllable_text)
 
         # ❌ PASANGAN cannot start a syllable
+        # PASANGAN errors are already reported by OrthographyValidator (ORT007)
         if self.current_token.type == TokenType.PASANGAN:
-            self.error(
-                "SYN003",
-                "PASANGAN cannot appear without a base consonant",
-                self.current_token
-            )
             self.advance()
             return None
 
         # ❌ Diacritics / pangkon without base consonant
+        # These are already handled by parse_sentence() and OrthographyValidator
+        # Just skip them to continue parsing
         if self.current_token.type in [
             TokenType.VOCAL_DIACRITIC,
             TokenType.CONSONANT_DIACRITIC,
             TokenType.PANGKON
         ]:
-            self.error(
-                "SYN002",
-                "Invalid diacritic order: diacritic/pangkon cannot appear without a base consonant",
-                self.current_token
-            )
             self.advance()
             return None
 
@@ -497,28 +526,30 @@ class Parser:
           WORD -> AKSARA_GROUP+
 
         Implementation:
-          - repeatedly parse_syllable() (your syllable corresponds to AKSARA_GROUP)
-          - stop at SPACE / PUNCTUATION / EOF
-          - error recovery skips bad tokens and continues
+        Only CONSONANT or VOWEL can start AKSARA_GROUP.
+        Diacritics/pangkon cannot start a group; they should be syntax errors
+        handled at SENTENCE level (recovery), not consumed as part of WORD.
         """
         word_node = ASTNode(ASTNodeType.WORD, "")
 
-        while self.current_token.type in [
-                TokenType.CONSONANT, TokenType.VOWEL,
-                TokenType.VOCAL_DIACRITIC, TokenType.CONSONANT_DIACRITIC,
-                TokenType.PANGKON
-            ]:
-            syllable_node = self.parse_syllable()
-            if syllable_node is None:
-                # recovery: keep going
-                continue
-            word_node.children.append(syllable_node)
-            word_node.value += syllable_node.value
+        # Must have at least one AKSARA_GROUP
+        if not self.is_aksara_group_start(self.current_token):
+            self.error("SYN010", "WORD must start with CONSONANT or VOWEL", self.current_token)
+            return word_node  # empty, sentence loop will recover
 
-            # Stop if next is space/punct/eof
-            if self.current_token.type in [TokenType.SPACE, TokenType.PUNCTUATION, TokenType.EOF]:
+        while self.is_aksara_group_start(self.current_token):
+            group_node = self.parse_aksara_group()
+            if group_node is None:
+                continue
+            word_node.children.append(group_node)
+            # word_node.value will be filled later by a "linearize" pass
+            # but if you want immediate string, you can do: word_node.value += self.linearize(group_node)
+
+            # stop if boundary reached
+            if self.current_token.type in (TokenType.SPACE, TokenType.PUNCTUATION, TokenType.EOF):
                 break
 
+        word_node.value = self.linearize(word_node)
         return word_node
 
     def parse_sentence(self) -> ASTNode:
@@ -535,26 +566,12 @@ class Parser:
         sentence_node = ASTNode(ASTNodeType.SENTENCE, "")
 
         while self.current_token.type not in [TokenType.PUNCTUATION, TokenType.EOF]:
-            if self.current_token.type in [
-                TokenType.CONSONANT,
-                TokenType.VOWEL,
-                TokenType.VOCAL_DIACRITIC,
-                TokenType.CONSONANT_DIACRITIC,
-                TokenType.PANGKON,
-            ]:
+
+            if self.is_aksara_group_start(self.current_token):
                 word = self.parse_word()
                 if word.value:
                     sentence_node.children.append(word)
                     sentence_node.value += word.value
-
-            elif self.current_token.type == TokenType.PASANGAN:
-                # ❌ PASANGAN cannot start a word
-                self.error(
-                    "SYN003",
-                    "PASANGAN cannot start a word",
-                    self.current_token
-                )
-                self.advance()
 
             elif self.current_token.type == TokenType.SPACE:
                 space_node = ASTNode(ASTNodeType.SPACE, self.current_token.latin)
@@ -562,13 +579,22 @@ class Parser:
                 sentence_node.value += " "
                 self.eat(TokenType.SPACE)
 
+            elif self.current_token.type == TokenType.PASANGAN:
+                # PASANGAN errors are already reported by OrthographyValidator (ORT007)
+                # Just skip them to continue parsing
+                self.advance()
+
+            elif self.current_token.type in (TokenType.VOCAL_DIACRITIC, TokenType.CONSONANT_DIACRITIC, TokenType.PANGKON):
+                # Diacritic errors are already reported by OrthographyValidator (ORT001, ORT002, etc.)
+                # Just skip them to continue parsing
+                self.advance()
+
             elif self.current_token.type == TokenType.UNKNOWN:
-                # Illegal character
-                self.error("LEX001", "Illegal character", self.current_token)
+                # UNKNOWN tokens are already reported by OrthographyValidator
+                # Just skip them to continue parsing
                 self.advance()
 
             else:
-                # Generic known-but-unexpected token
                 self.error("SYN006", "Unexpected token in sentence", self.current_token)
                 self.advance()
 
@@ -580,6 +606,66 @@ class Parser:
             self.eat(TokenType.PUNCTUATION)
 
         return sentence_node
+    
+    def linearize(self, node: ASTNode) -> str:
+        """
+        Converts grammar-aligned AST back into latin string output.
+        This replaces the old behavior where you built the string during parsing.
+        """
+
+        if node.node_type == ASTNodeType.PROGRAM:
+            return "".join(self.linearize(ch) for ch in node.children)
+
+        if node.node_type == ASTNodeType.SENTENCE:
+            return "".join(self.linearize(ch) for ch in node.children)
+
+        if node.node_type == ASTNodeType.WORD:
+            return "".join(self.linearize(ch) for ch in node.children)
+
+        if node.node_type == ASTNodeType.SPACE:
+            return " "
+
+        if node.node_type == ASTNodeType.PUNCTUATION:
+            return node.value
+
+        if node.node_type == ASTNodeType.AKSARA_GROUP:
+            return "".join(self.linearize(ch) for ch in node.children)
+
+        if node.node_type == ASTNodeType.VOWEL_GROUP:
+            # Here we stored latin in node.value already
+            return node.value
+
+        if node.node_type == ASTNodeType.CONSONANT_GROUP:
+            # Reconstruct using grammar rules
+            base = ""
+            clusters = []
+            vowel = None
+            finals = []
+            dead = False
+
+            for ch in node.children:
+                if ch.node_type == ASTNodeType.BASE_CONSONANT:
+                    base = ch.value
+                elif ch.node_type == ASTNodeType.CLUSTER:
+                    clusters.append(ch.value)
+                elif ch.node_type == ASTNodeType.VOWEL_MARK:
+                    vowel = ch.value
+                elif ch.node_type == ASTNodeType.FINAL_MARK:
+                    finals.append(ch.value)
+                elif ch.node_type == ASTNodeType.DEAD_MARK:
+                    dead = True
+
+            core = base + "".join(clusters)
+
+            if dead:
+                return core + "".join(finals)
+            else:
+                # inherent vowel 'a' unless overridden
+                v = vowel if vowel is not None else "a"
+                return core + v + "".join(finals)
+
+        # Leaf-ish fallback
+        return node.value
 
     def parse(self) -> ASTNode:
         """
@@ -605,7 +691,8 @@ class Parser:
                 program_node.children.append(sentence)
                 program_node.value += sentence.value
             elif self.current_token.type == TokenType.PASANGAN:
-                self.error("SYN003", "PASANGAN cannot start a sentence", self.current_token)
+                # PASANGAN errors are already reported by OrthographyValidator (ORT007)
+                # Just skip them to continue parsing
                 self.advance()
             else:
                 self.error("SYN000", "Unexpected token at program level", self.current_token)
@@ -613,6 +700,9 @@ class Parser:
 
         if self.debug:
             print(f"[PARSER] AST built: {program_node}")
+
+        # ✅ FINALIZE PROGRAM VALUE FROM AST (grammar-aligned)
+        program_node.value = self.linearize(program_node)
 
         return program_node
 
@@ -1217,23 +1307,28 @@ class Translator:
             print(f"{prefix}{node.node_type.value}: '{node.value}'")
 
     def print_ast_pretty(self, node: ASTNode, prefix: str = "", is_last: bool = True):
-        connector = "└── " if is_last else "├── "
-
+        """
+        Pretty print AST with tree-style lines and formatting.
+        Uses box-drawing characters for a clean tree visualization.
+        """
         # Build node label
         label = node.node_type.value
         if node.value != "":
-            # show value, but truncate if too long
             shown = node.value.replace("\n", "\\n")
             if len(shown) > 60:
                 shown = shown[:60] + "..."
-            label += f" ('{shown}')"
-
+            label += f"('{shown}')"
+        
+        # Use tree connectors: └── for last child, ├── for others
+        connector = "└── " if is_last else "├── "
         print(prefix + connector + label)
-
+        
         # Prepare prefix for children
+        # Use "    " (4 spaces) for last child to avoid vertical line
+        # Use "│   " for others to continue vertical line
         child_prefix = prefix + ("    " if is_last else "│   ")
-
-        # Print children
+        
+        # Print children recursively
         for i, child in enumerate(node.children):
             last_child = (i == len(node.children) - 1)
             self.print_ast_pretty(child, child_prefix, last_child)

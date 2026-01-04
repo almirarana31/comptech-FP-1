@@ -100,6 +100,7 @@ function clearAll() {
     document.getElementById('latinOutput').textContent = '';
     document.getElementById('englishOutput').textContent = '';
     clearAnalysisTable();
+    updateWarningsTable([]);
     updateStatus('Cleared');
 }
 
@@ -143,6 +144,36 @@ function updateStatus(message, isError = false) {
 function clearAnalysisTable() {
     const tbody = document.getElementById('analysisBody');
     tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No analysis available. Enter text and translate to see word analysis.</td></tr>';
+}
+
+// Update warnings table
+function updateWarningsTable(errors) {
+    const warningsCard = document.getElementById('warningsCard');
+    const warningsBody = document.getElementById('warningsBody');
+    
+    if (!errors || errors.length === 0) {
+        warningsCard.style.display = 'none';
+        warningsBody.innerHTML = '<tr class="empty-row"><td colspan="4">No warnings.</td></tr>';
+        return;
+    }
+    
+    // Show warnings card
+    warningsCard.style.display = 'block';
+    warningsBody.innerHTML = '';
+    
+    errors.forEach(error => {
+        const row = document.createElement('tr');
+        const location = `L${error.line}:C${error.column}`;
+        const token = error.token_value ? `'${escapeHtml(error.token_value)}'` : '';
+        
+        row.innerHTML = `
+            <td><code>${escapeHtml(error.code || '')}</code></td>
+            <td>${escapeHtml(error.message || '')}</td>
+            <td>${location}</td>
+            <td>${token}</td>
+        `;
+        warningsBody.appendChild(row);
+    });
 }
 
 // Update analysis table
@@ -209,6 +240,7 @@ function showDebugTab(tabName) {
         'tokens': 'debugTokens',
         'ast': 'debugAST',
         'bytecode': 'debugBytecode',
+        'vm': 'debugVM',
         'morphology': 'debugMorphology'
     };
     
@@ -303,6 +335,14 @@ function updateDebugOutput(debugData) {
     // Update Bytecode
     updateBytecodeTable(debugData.bytecode);
     
+    // Update VM Execution
+    if (debugData.debug_output) {
+        const vmSteps = extractVMOutput(debugData.debug_output);
+        updateVMTable(vmSteps);
+    } else {
+        updateVMTable([]);
+    }
+    
     // Update Morphology
     updateMorphologyDisplay(debugData.analysis);
     
@@ -381,14 +421,151 @@ function updateMorphologyDisplay(analysis) {
     morphologyContent.innerHTML = html;
 }
 
-// Format AST for display
-function formatAST(astNode, indent = 0) {
-    const prefix = '  '.repeat(indent);
-    let result = `${prefix}${astNode.node_type}('${astNode.value}')\n`;
+// Extract and parse VM execution output from debug output
+function extractVMOutput(debugOutput) {
+    if (!debugOutput) {
+        return [];
+    }
     
+    // Find the VM execution section
+    const vmStartMarker = 'PHASE 5: VIRTUAL MACHINE EXECUTION';
+    const startIndex = debugOutput.indexOf(vmStartMarker);
+    
+    if (startIndex === -1) {
+        return [];
+    }
+    
+    // Extract from the start marker to the end (or until next phase marker)
+    let vmSection = debugOutput.substring(startIndex);
+    
+    // Try to find the end (next phase marker or end of string)
+    const nextPhaseMarker = vmSection.indexOf('\nPHASE ');
+    if (nextPhaseMarker !== -1) {
+        vmSection = vmSection.substring(0, nextPhaseMarker);
+    }
+    
+    // Also check for "COMPILATION COMPLETE" marker
+    const completeMarker = vmSection.indexOf('\nCOMPILATION COMPLETE');
+    if (completeMarker !== -1) {
+        vmSection = vmSection.substring(0, completeMarker);
+    }
+    
+    // Also check for "Latin output" and "English output" markers and remove them
+    const latinOutputMarker = vmSection.indexOf('\n  Latin output:');
+    if (latinOutputMarker !== -1) {
+        vmSection = vmSection.substring(0, latinOutputMarker);
+    }
+    
+    const englishOutputMarker = vmSection.indexOf('\n  English output:');
+    if (englishOutputMarker !== -1) {
+        vmSection = vmSection.substring(0, englishOutputMarker);
+    }
+    
+    // Parse VM execution lines
+    const lines = vmSection.split('\n');
+    const vmSteps = [];
+    let currentOutput = null;
+    
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        
+        // Skip empty lines, separators, phase headers, and output summary lines
+        if (!line || 
+            line.startsWith('PHASE') || 
+            line.startsWith('---') || 
+            line.startsWith('=') ||
+            line.includes('Latin output:') ||
+            line.includes('English output:')) {
+            continue;
+        }
+        
+        // Check if this is a VM execution line: [VM] IP=X | Instruction(...) | STACK=[...]
+        const vmMatch = line.match(/\[VM\] IP=(\d+) \| Instruction\(opcode=<OpCode\.(\w+): '(\w+)'>, operand=(.+?)\) \| STACK=(.+)$/);
+        if (vmMatch) {
+            const ip = parseInt(vmMatch[1]);
+            const opcode = vmMatch[3];
+            let operand = vmMatch[4];
+            
+            // Clean up operand (remove quotes, handle None)
+            if (operand === 'None') {
+                operand = '';
+            } else {
+                operand = operand.replace(/^['"]|['"]$/g, '');
+            }
+            
+            // Parse stack - keep the full representation
+            let stack = vmMatch[5].trim();
+            
+            vmSteps.push({
+                ip: ip,
+                opcode: opcode,
+                operand: operand,
+                stack: stack,
+                output: null
+            });
+            currentOutput = null;
+        } else if (line && !line.startsWith('[') && !line.startsWith('PHASE') && !line.startsWith('=') && !line.startsWith('-') && vmSteps.length > 0) {
+            // This might be output from a PRINT instruction
+            // Check if the last step was a PRINT
+            const lastStep = vmSteps[vmSteps.length - 1];
+            if (lastStep && lastStep.opcode === 'PRINT' && !lastStep.output) {
+                lastStep.output = line;
+            }
+        }
+    }
+    
+    return vmSteps;
+}
+
+// Update VM execution table
+function updateVMTable(vmSteps) {
+    const vmBody = document.getElementById('vmBody');
+    if (!vmSteps || vmSteps.length === 0) {
+        vmBody.innerHTML = 
+            '<tr><td colspan="5" style="text-align: center; color: #858585;">No VM execution data available.</td></tr>';
+        return;
+    }
+    
+    vmBody.innerHTML = '';
+    vmSteps.forEach(step => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${step.ip.toString().padStart(2, '0')}</td>
+            <td>${escapeHtml(step.opcode || '')}</td>
+            <td>${escapeHtml(step.operand || '')}</td>
+            <td>${escapeHtml(step.stack || '[]')}</td>
+            <td>${escapeHtml(step.output || '')}</td>
+        `;
+        vmBody.appendChild(row);
+    });
+}
+
+// Format AST for display with tree-style lines
+function formatAST(astNode, prefix = '', isLast = true) {
+    // Build node label
+    let label = astNode.node_type;
+    if (astNode.value && astNode.value !== '') {
+        let shown = astNode.value.replace(/\n/g, '\\n');
+        if (shown.length > 60) {
+            shown = shown.substring(0, 60) + '...';
+        }
+        label += `('${shown}')`;
+    }
+    
+    // Use tree connectors: └── for last child, ├── for others
+    const connector = isLast ? '└── ' : '├── ';
+    let result = prefix + connector + label + '\n';
+    
+    // Prepare prefix for children
+    // Use "    " (4 spaces) for last child to avoid vertical line
+    // Use "│   " for others to continue vertical line
+    const childPrefix = prefix + (isLast ? '    ' : '│   ');
+    
+    // Print children recursively
     if (astNode.children && astNode.children.length > 0) {
-        astNode.children.forEach(child => {
-            result += formatAST(child, indent + 1);
+        astNode.children.forEach((child, index) => {
+            const lastChild = (index === astNode.children.length - 1);
+            result += formatAST(child, childPrefix, lastChild);
         });
     }
     
@@ -454,6 +631,7 @@ async function translate() {
     document.getElementById('latinOutput').textContent = '';
     document.getElementById('englishOutput').textContent = '';
     clearAnalysisTable();
+    updateWarningsTable([]);
     
     try {
         const response = await fetch(API_URL, {
@@ -519,6 +697,8 @@ async function translate() {
         
         // Show errors if any
         const errors = result.errors || [];
+        updateWarningsTable(errors);
+        
         if (errors.length > 0) {
             updateStatus(`Translation complete with ${errors.length} warning(s)`, true);
             if (debugMode) {

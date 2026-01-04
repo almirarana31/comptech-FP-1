@@ -93,6 +93,28 @@
             </div>
         </div>
 
+        <!-- Warnings Section (hidden by default) -->
+        <div class="card warnings-card" id="warningsCard">
+            <h2>⚠️ Warnings</h2>
+            <div class="table-container">
+                <table id="warningsTable" class="analysis-table">
+                    <thead>
+                        <tr>
+                            <th>Code</th>
+                            <th>Message</th>
+                            <th>Location</th>
+                            <th>Token</th>
+                        </tr>
+                    </thead>
+                    <tbody id="warningsBody">
+                        <tr class="empty-row">
+                            <td colspan="4">No warnings.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <!-- Debug Output Section (hidden by default) -->
         <div class="card debug-card" id="debugCard" style="display: none;">
             <div class="debug-header">
@@ -104,6 +126,7 @@
                 <button class="debug-tab" onclick="showDebugTab('tokens')">Tokens</button>
                 <button class="debug-tab" onclick="showDebugTab('ast')">AST</button>
                 <button class="debug-tab" onclick="showDebugTab('bytecode')">Bytecode</button>
+                <button class="debug-tab" onclick="showDebugTab('vm')">VM Execution</button>
                 <button class="debug-tab" onclick="showDebugTab('morphology')">Morphology</button>
             </div>
             <div id="debugOutput" class="debug-content">
@@ -139,6 +162,22 @@
                             </tr>
                         </thead>
                         <tbody id="bytecodeBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div id="debugVM" class="debug-content" style="display: none;">
+                <div class="table-container">
+                    <table class="debug-table">
+                        <thead>
+                            <tr>
+                                <th>IP</th>
+                                <th>Opcode</th>
+                                <th>Operand</th>
+                                <th>Stack</th>
+                                <th>Output</th>
+                            </tr>
+                        </thead>
+                        <tbody id="vmBody"></tbody>
                     </table>
                 </div>
             </div>
