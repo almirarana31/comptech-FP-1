@@ -1,91 +1,109 @@
-**Javanese Script Translator – Web Interface**
+# **Javanese Script Translator – Web Interface**
 
-A modern, web-based graphical interface for translating Javanese Script into Latin transliteration and English, built on top of an existing Python translation engine.
+![Python](https://img.shields.io/badge/Python-3.10+-blue)
+![Flask](https://img.shields.io/badge/Flask-Web%20API-green)
+![Status](https://img.shields.io/badge/Status-Active-success)
+![UI](https://img.shields.io/badge/UI-Responsive-purple)
+![License](https://img.shields.io/badge/License-Academic-lightgrey)
 
-✨ Features
-🎨 Modern & responsive UI
-📱 Mobile-friendly layout
-⚡ Real-time translation
-📊 Word analysis with morphological breakdown
-🔍 Debug mode for detailed processing insight
-⌨️ Keyboard shortcuts (Ctrl + Enter)
-📝 Example texts for quick testing
-📦 Installation
+A modern, web-based graphical interface for translating **Aksara Jawa** into **Latin transliteration** and **English**, built on top of a compiler-inspired Python translation engine.
 
-_Install all required Python dependencies:_
-- pip install -r requirements.txt
-- ▶️ Running the Application
-- Start the Flask web server: **python server.py**
+---
 
-**Open your browser and navigate to:** _http://localhost:5000_
+## ✨ Features
 
-The interface will load automatically — you can start translating right away.
+- 🎨 **Modern & responsive UI**
+- 📱 **Mobile-friendly layout**
+- ⚡ **Real-time translation**
+- 📊 **Word-level morphological analysis**
+- 🔍 **Debug mode** for detailed lexical and syntactic insight
+- ⌨️ **Keyboard shortcuts** (Ctrl + Enter)
+- 📝 **Built-in example texts** for quick testing
 
-🧭 Usage Guide
+---
+
+## 📦 Installation
+
+Install all required Python dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+## ▶️ Running the Application
+Start the Flask web server:
+
+```bash
+python server.py
+```
+Then open your browser and navigate to:
+http://localhost:5000
+
+The interface will load automatically. You can start translating immediately.
+
+## 🧭 Usage Guide
 1. Input
 Type or paste Javanese script text into the input field.
 
-2. Translat
+2. Translate
 Click the Translate button
-Or press Ctrl + Enter (Cmd + Enter on macOS)
 
 3. View Results
 Latin transliteration appears in the left panel
+
 English translation appears in the right panel
-Word analysis table displays detailed morphological breakdown
+
+A word analysis table displays morphological breakdown and dictionary lookup
 
 4. Examples
-Use the example buttons to instantly test sample inputs.
+Use the example buttons to instantly test predefined inputs.
 
 5. Debug Mode
-Enable Debug Mode to view detailed processing logs in the browser console.
+Enable Debug Mode to view detailed processing logs (lexer, parser, and validation stages) in the browser console.
 
-⌨️ Keyboard Shortcuts
-Shortcut	Action
-Ctrl + Enter	Translate text
-Ctrl + R	Translate text
-Help Button	View usage instructions
-🗂️ Project Structure
+## 🗂️ Project Structure
+text
+Copy code
 ├── index.html        # Main web interface
 ├── style.css         # Styling and layout
 ├── script.js         # Client-side JavaScript logic
-├── server.py         # Flask server & API
-├── ct.py             # Core translation engine
+├── server.py         # Flask server & REST API
+├── ct.py             # Core translation engine (compiler-based)
 ├── requirements.txt  # Python dependencies
 
-🔌 API Reference
-
-The application exposes a REST API endpoint:
-
+## 🔌 API Reference
+Endpoint
 POST /translate
 
 Request Body
-
+json
+Copy code
 {
   "text": "javanese text",
   "debug": false
 }
-
-
 Response
-
+json
+Copy code
 {
   "latin": "...",
   "english": "...",
   "analysis": [...],
   "errors": []
 }
+## 🛠️ Troubleshooting
+Ensure the server is running on port 5000
 
-**🛠️ Troubleshooting**
-- Ensure the server is running on port 5000
-- Check the browser console (F12) for JavaScript errors
-- Enable Debug Mode for detailed processing output
-- Reinstall dependencies if needed:
-- pip install -r requirements.txt
+Check the browser console (F12) for JavaScript errors
 
+Enable Debug Mode for detailed processing output
+
+Reinstall dependencies if necessary:
+```bash
+pip install -r requirements.txt
+```
 Default server address: http://localhost:5000
+Debug output: Browser console
+Platform support: Desktop & Mobile (fully responsive)
 
-Debug output appears in the browser console
-
-Fully responsive and optimized for desktop & mobile
-
+✨ Built for educational and linguistic exploration of Aksara Jawa
