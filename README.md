@@ -25,85 +25,100 @@ A modern, web-based graphical interface for translating **Aksara Jawa** into **L
 ## 📦 Installation
 
 Install all required Python dependencies:
-
 ```bash
 pip install -r requirements.txt
 ```
 
 ## ▶️ Running the Application
-Start the Flask web server:
 
+Start the Flask web server:
 ```bash
 python server.py
 ```
+
 Then open your browser and navigate to:
+```
 http://localhost:5000
+```
 
 The interface will load automatically. You can start translating immediately.
 
+---
+
 ## 🧭 Usage Guide
-1. Input
+
+### 1. Input
 Type or paste Javanese script text into the input field.
 
-2. Translate
-Click the Translate button
+### 2. Translate
+Click the **Translate** button
 
-3. View Results
-Latin transliteration appears in the left panel
+### 3. View Results
+- Latin transliteration appears in the left panel
+- English translation appears in the right panel
+- A word analysis table displays morphological breakdown and dictionary lookup
 
-English translation appears in the right panel
-
-A word analysis table displays morphological breakdown and dictionary lookup
-
-4. Examples
+### 4. Examples
 Use the example buttons to instantly test predefined inputs.
 
-5. Debug Mode
-Enable Debug Mode to view detailed processing logs (lexer, parser, and validation stages) in the browser console.
+### 5. Debug Mode
+Enable **Debug Mode** to view detailed processing logs (lexer, parser, and validation stages) in the browser console.
+
+---
 
 ## 🗂️ Project Structure
-text
-Copy code
+```
 ├── index.html        # Main web interface
 ├── style.css         # Styling and layout
 ├── script.js         # Client-side JavaScript logic
 ├── server.py         # Flask server & REST API
 ├── ct.py             # Core translation engine (compiler-based)
 ├── requirements.txt  # Python dependencies
+```
+
+---
 
 ## 🔌 API Reference
-Endpoint
-POST /translate
 
-Request Body
-json
-Copy code
+### Endpoint
+```
+POST /translate
+```
+
+### Request Body
+```json
 {
   "text": "javanese text",
   "debug": false
 }
-Response
-json
-Copy code
+```
+
+### Response
+```json
 {
   "latin": "...",
   "english": "...",
   "analysis": [...],
   "errors": []
 }
+```
+
+---
+
 ## 🛠️ Troubleshooting
-Ensure the server is running on port 5000
 
-Check the browser console (F12) for JavaScript errors
-
-Enable Debug Mode for detailed processing output
-
-Reinstall dependencies if necessary:
+- Ensure the server is running on port 5000
+- Check the browser console (F12) for JavaScript errors
+- Enable **Debug Mode** for detailed processing output
+- Reinstall dependencies if necessary:
 ```bash
 pip install -r requirements.txt
 ```
-Default server address: http://localhost:5000
-Debug output: Browser console
-Platform support: Desktop & Mobile (fully responsive)
 
-✨ Built for educational and linguistic exploration of Aksara Jawa
+- **Default server address:** `http://localhost:5000`
+- **Debug output:** Browser console
+- **Platform support:** Desktop & Mobile (fully responsive)
+
+---
+
+✨ **Built for educational and linguistic exploration of Aksara Jawa**
