@@ -462,6 +462,7 @@ class Parser:
 
         # Shouldn't happen if caller checks start tokens, but keep safe
         self.error("SYN011", "Invalid start of AKSARA_GROUP", self.current_token)
+        self.advance()
         return None
     
     def parse_vowel_group(self) -> ASTNode:
@@ -535,9 +536,10 @@ class Parser:
         # Must have at least one AKSARA_GROUP
         if not self.is_aksara_group_start(self.current_token):
             self.error("SYN010", "WORD must start with CONSONANT or VOWEL", self.current_token)
+            self.advance()
             return word_node  # empty, sentence loop will recover
 
-        while self.is_aksara_group_start(self.current_token):
+        while self.current_token.type not in (TokenType.SPACE, TokenType.PUNCTUATION, TokenType.EOF):
             group_node = self.parse_aksara_group()
             if group_node is None:
                 continue
@@ -555,50 +557,45 @@ class Parser:
     def parse_sentence(self) -> ASTNode:
         """
         Grammar:
-          SENTENCE -> (WORD (SPACE WORD)*) (PUNCTUATION)?
+        SENTENCE -> (WORD (SPACE WORD)*) (PUNCTUATION)?
 
-        Implementation:
-          - While not PUNCTUATION/EOF:
-              parse WORD whenever the token stream looks like a word start
-              consume SPACE tokens between words
-          - After loop: optionally consume a single PUNCTUATION
+        Fixed behavior:
+        - SPACE is consumed normally.
+        - For any other token (including diacritics/pangkon/pasangan/unknown),
+            we "attempt" to parse a WORD.
+            If it isn't a valid word start, parse_word() will emit SYN010 and consume
+            the bad token (recovery).
+        - Stops on PUNCTUATION or EOF, then optionally consumes one PUNCTUATION.
         """
         sentence_node = ASTNode(ASTNodeType.SENTENCE, "")
 
-        while self.current_token.type not in [TokenType.PUNCTUATION, TokenType.EOF]:
+        while self.current_token.type not in (TokenType.PUNCTUATION, TokenType.EOF):
 
-            if self.is_aksara_group_start(self.current_token):
-                word = self.parse_word()
-                if word.value:
-                    sentence_node.children.append(word)
-                    sentence_node.value += word.value
-
-            elif self.current_token.type == TokenType.SPACE:
+            # 1) Consume spaces between words
+            if self.current_token.type == TokenType.SPACE:
                 space_node = ASTNode(ASTNodeType.SPACE, self.current_token.latin)
                 sentence_node.children.append(space_node)
                 sentence_node.value += " "
                 self.eat(TokenType.SPACE)
+                continue
 
-            elif self.current_token.type == TokenType.PASANGAN:
-                # PASANGAN errors are already reported by OrthographyValidator (ORT007)
-                # Just skip them to continue parsing
+            # 2) Attempt a WORD for anything else.
+            #    - If token is CONSONANT/VOWEL: parse_word() succeeds.
+            #    - If token is VOCAL_DIACRITIC / PANGKON / PASANGAN / UNKNOWN / etc:
+            #      parse_word() emits SYN010 and consumes the bad token (recovery).
+            word = self.parse_word()
+            if word.value:
+                sentence_node.children.append(word)
+                sentence_node.value += word.value
+
+            # If parse_word() returned empty and did NOT advance, avoid infinite loop
+            # (This is just a safety net. With the parse_word() fix below, it won't be needed.)
+            if (not word.value) and (self.current_token.type not in (TokenType.SPACE, TokenType.PUNCTUATION, TokenType.EOF)) \
+            and (not self.is_aksara_group_start(self.current_token)):
+                # We are still on a bad token -> force progress
                 self.advance()
 
-            elif self.current_token.type in (TokenType.VOCAL_DIACRITIC, TokenType.CONSONANT_DIACRITIC, TokenType.PANGKON):
-                # Diacritic errors are already reported by OrthographyValidator (ORT001, ORT002, etc.)
-                # Just skip them to continue parsing
-                self.advance()
-
-            elif self.current_token.type == TokenType.UNKNOWN:
-                # UNKNOWN tokens are already reported by OrthographyValidator
-                # Just skip them to continue parsing
-                self.advance()
-
-            else:
-                self.error("SYN006", "Unexpected token in sentence", self.current_token)
-                self.advance()
-
-        # Handle punctuation
+        # 3) Optional punctuation at end of sentence
         if self.current_token.type == TokenType.PUNCTUATION:
             punct_node = ASTNode(ASTNodeType.PUNCTUATION, self.current_token.latin)
             sentence_node.children.append(punct_node)
@@ -606,6 +603,7 @@ class Parser:
             self.eat(TokenType.PUNCTUATION)
 
         return sentence_node
+
     
     def linearize(self, node: ASTNode) -> str:
         """
